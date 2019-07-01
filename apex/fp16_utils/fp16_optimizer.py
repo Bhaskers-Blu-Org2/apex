@@ -43,13 +43,15 @@ class FP16_Optimizer(object):
                                    # Usually, dynamic_loss_args is not necessary.
     """
 
-    def __init__(self,
-                 init_optimizer,
-                 static_loss_scale=1.0,
+    def __init__(self, 
+                 init_optimizer, 
+                 static_loss_scale=1.0, 
                  dynamic_loss_scale=False,
                  dynamic_loss_args=None,
                  verbose=True):
-
+        if not torch.cuda.is_available:
+            raise SystemError("Cannot use fp16 without CUDA.")
+        self.optimizer = init_optimizer
         # The fused optimizer does all the work. We need this layer for two reason:
         # 1. maintain same user API from apex.fp16_utils
         # 2. keep common stuff here in case we need to add new fused optimizer later
@@ -59,9 +61,6 @@ class FP16_Optimizer(object):
         # - assume all params requires grad
         # - flat by groups, not keeping state. TODO: remove state explicitly?
         # - master gard and unflat master weight never exist. TODO: a way to save out unflat master?
-        if not torch.cuda.is_available:
-            raise SystemError("Cannot use fp16 without CUDA.")
-        self.optimizer = init_optimizer
 
         # param flattened by groups
         self.fp16_groups = []
@@ -90,10 +89,10 @@ class FP16_Optimizer(object):
 
         # we may have a way of fusing dynamic scale. Do not support for now
         if dynamic_loss_scale:
+            self.dynamic_loss_scale = True
             if dynamic_loss_args is not None:
                 raise SystemError(
                     "Do not support dynamic loss scale args for now.")
-            self.dynamic_loss_scale = True
             self.cur_scale = 2**32
             self.cur_iter = 0
             self.last_overflow_iter = -1
@@ -103,8 +102,6 @@ class FP16_Optimizer(object):
             self.dynamic_loss_scale = False
             self.cur_iter = 0
             self.cur_scale = static_loss_scale
-
-        print(len(self.fp16_groups))
 
     def zero_grad(self, set_grads_to_None=True):
         """
